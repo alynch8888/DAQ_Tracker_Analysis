@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tracker Station Explorer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a232c;
+    --surface:#212b35;
+    --surface-2:#2a3542;
+    --border:#3a4854;
+    --text:#e7edf2;
+    --text-dim:#8ea0ac;
+    --text-faint:#546472;
+    --accent:#d9a441;
+    --accent-soft:rgba(217,164,65,0.16);
+    --plane1:#5cc8c2;
+    --plane2:#e08a4f;
+    --focus:#d9a441;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;overflow:hidden;}
+  ::selection{background:var(--accent-soft);}
+  button:focus-visible, .crumb:focus-visible, input:focus-visible, select:focus-visible{
+    outline:2px solid var(--focus); outline-offset:2px;
+  }
+
+  #app{position:fixed;inset:0;}
+  #canvas-wrap{position:absolute;inset:0;}
+  canvas{display:block;width:100%;height:100%;}
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; align-items:center; gap:18px;
+    padding:14px 20px; z-index:5;
+    background:linear-gradient(180deg, rgba(10,14,19,0.92) 0%, rgba(10,14,19,0.55) 70%, transparent 100%);
+    pointer-events:none;
+  }
+  #topbar > *{pointer-events:auto;}
+  #wordmark{
+    font-family:'Big Shoulders Display',sans-serif;
+    font-weight:800; font-size:19px; letter-spacing:0.03em;
+    color:var(--text); white-space:nowrap;
+    display:flex; flex-direction:column; line-height:1;
+  }
+  #wordmark small{
+    font-family:'IBM Plex Mono',monospace; font-weight:400; font-size:9.5px;
+    letter-spacing:0.14em; color:var(--text-faint); margin-top:3px; text-transform:uppercase;
+  }
+  #breadcrumb{
+    display:flex; align-items:center; flex-wrap:wrap; gap:2px;
+    font-family:'IBM Plex Mono',monospace; font-size:12.5px;
+  }
+  .crumb{
+    background:none; border:1px solid transparent; color:var(--text-dim);
+    padding:5px 9px; border-radius:5px; cursor:pointer; font:inherit;
+    transition:background .15s, color .15s, border-color .15s;
+  }
+  .crumb:hover{background:var(--surface-2); color:var(--text); border-color:var(--border);}
+  .crumb.current{color:var(--accent); font-weight:500;}
+  .crumb-sep{color:var(--text-faint); padding:0 1px; font-size:12px;}
+
+  #jumpwrap{margin-left:auto; display:flex; align-items:center; gap:8px;}
+  #jump-btn, #names-btn{
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:.04em;
+    background:var(--surface); border:1px solid var(--border); color:var(--text-dim);
+    padding:7px 12px; border-radius:6px; cursor:pointer; text-transform:uppercase;
+  }
+  #jump-btn:hover, #names-btn:hover{color:var(--text); border-color:var(--accent);}
+
+  /* ---------- Jump panel ---------- */
+  #jumpbox{
+    position:absolute; top:56px; right:20px; z-index:6;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:14px; width:220px; box-shadow:0 12px 32px rgba(0,0,0,0.45);
+    display:none; flex-direction:column; gap:10px;
+  }
+  #jumpbox.open{display:flex;}
+  #jumpbox label{font-size:10.5px; text-transform:uppercase; letter-spacing:.09em; color:var(--text-faint); display:block; margin-bottom:4px;}
+  #jumpbox select, #jumpbox input{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    font-family:'IBM Plex Mono',monospace; font-size:13px; padding:7px 8px; border-radius:5px;
+  }
+  #jumpbox .row{display:flex; flex-direction:column;}
+  #jumpbox .go{
+    background:var(--accent); color:#181008; border:none; border-radius:5px; padding:8px;
+    font-weight:600; font-size:12.5px; cursor:pointer; letter-spacing:.03em; margin-top:2px;
+  }
+  #jumpbox .go:hover{filter:brightness(1.08);}
+
+  /* ---------- Edit-names modal ---------- */
+  #namesOverlay{
+    position:fixed; inset:0; z-index:30; background:rgba(10,14,19,0.72);
+    display:none; align-items:center; justify-content:center; padding:32px;
+    backdrop-filter:blur(2px);
+  }
+  #namesOverlay.open{display:flex;}
+  #namesModal{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    width:min(680px, 100%); max-height:86vh; overflow-y:auto;
+    padding:22px 24px 26px; box-shadow:0 30px 70px rgba(0,0,0,0.55);
+  }
+  #namesModal::-webkit-scrollbar{width:8px;}
+  #namesModal::-webkit-scrollbar-thumb{background:var(--surface-2); border-radius:4px;}
+  .namesHeader{display:flex; align-items:center; justify-content:space-between; gap:12px;}
+  .namesHeader h2{
+    font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:22px; margin:0;
+  }
+  #names-close{
+    background:none; border:1px solid var(--border); color:var(--text-dim); width:30px; height:30px;
+    border-radius:7px; font-size:17px; line-height:1; cursor:pointer;
+  }
+  #names-close:hover{color:var(--text); border-color:var(--accent);}
+  .namesIntro{color:var(--text-dim); font-size:12.5px; line-height:1.55; margin:10px 0 20px;}
+  .namesSection{margin-bottom:22px;}
+  .namesSection h3{
+    font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:15px;
+    letter-spacing:.02em; margin:0 0 10px; text-transform:uppercase; color:var(--text-dim);
+  }
+  .namesSectionHint{font-family:'IBM Plex Sans',sans-serif; text-transform:none; font-weight:400; color:var(--text-faint); font-size:11.5px;}
+  .namesSectionHead{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+  .namesSectionHead h3{margin:0;}
+  .bulkToggle{
+    background:none; border:1px solid var(--border); color:var(--text-dim); font-size:11px;
+    padding:5px 10px; border-radius:6px; cursor:pointer; font-family:'IBM Plex Mono',monospace;
+  }
+  .bulkToggle:hover{color:var(--text); border-color:var(--accent);}
+  .bulkBox{
+    display:flex; flex-direction:column; gap:8px; margin-bottom:12px;
+    background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px;
+  }
+  .bulkBox textarea{
+    width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text);
+    font-family:'IBM Plex Mono',monospace; font-size:12px; padding:8px; border-radius:6px; resize:vertical;
+  }
+  .bulkFill{
+    align-self:flex-start; background:var(--accent); color:#181008; border:none; border-radius:6px;
+    padding:7px 12px; font-weight:600; font-size:11.5px; cursor:pointer;
+  }
+  .bulkFill:hover{filter:brightness(1.08);}
+  .namesGrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:8px;}
+  .namesRow{display:flex; flex-direction:column; gap:3px;}
+  .namesRow label{font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--text-faint);}
+  .namesRow input{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif; font-size:12.5px; padding:7px 9px; border-radius:6px;
+  }
+  .namesRow input:hover{border-color:var(--text-faint);}
+  .accItem{border:1px solid var(--border); border-radius:8px; margin-bottom:8px; overflow:hidden;}
+  .accHead{
+    width:100%; display:flex; align-items:center; gap:10px; text-align:left;
+    background:var(--surface-2); border:none; color:var(--text); padding:10px 12px;
+    font-family:'IBM Plex Sans',sans-serif; font-size:12.5px; cursor:pointer;
+  }
+  .accHead:hover{background:#313e4b;}
+  .accSlot{font-family:'IBM Plex Mono',monospace; color:var(--text-faint); font-size:11px; flex-shrink:0;}
+  .accName{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .accChevron{color:var(--text-faint); transition:transform .15s; font-size:11px;}
+  .accHead.open .accChevron{transform:rotate(180deg);}
+  .accBody{padding:12px; display:flex; flex-direction:column; gap:10px;}
+  .namesPanelsGrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); gap:8px; margin-left:14px;}
+
+  /* ---------- Info panel ---------- */
+  #infopanel{
+    position:absolute; top:64px; right:20px; bottom:20px; width:308px; z-index:4;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    padding:20px; overflow-y:auto;
+    box-shadow:0 20px 50px rgba(0,0,0,0.4);
+  }
+  #infopanel::-webkit-scrollbar{width:8px;}
+  #infopanel::-webkit-scrollbar-thumb{background:var(--surface-2); border-radius:4px;}
+
+  .eyebrow{
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 6px;
+  }
+  .obj-title{
+    font-family:'Big Shoulders Display',sans-serif; font-weight:700; font-size:30px;
+    line-height:1.02; margin:0 0 4px; text-wrap:balance;
+  }
+  .obj-sub{color:var(--text-dim); font-size:13px; margin:0 0 18px; line-height:1.5;}
+
+  .specgrid{display:flex; flex-direction:column; gap:0; margin-bottom:6px;}
+  .spec{
+    display:flex; justify-content:space-between; gap:10px;
+    padding:9px 0; border-bottom:1px solid var(--border);
+    font-size:12.5px;
+  }
+  .spec:last-child{border-bottom:none;}
+  .spec .k{color:var(--text-dim);}
+  .spec .v{font-family:'IBM Plex Mono',monospace; color:var(--text); text-align:right; font-size:12px;}
+
+  .section-label{
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-faint);
+    margin:20px 0 8px;
+  }
+
+  .note{
+    font-size:11.5px; line-height:1.55; color:var(--text-dim);
+    background:var(--surface-2); border:1px solid var(--border); border-radius:8px;
+    padding:10px 12px; margin-top:14px;
+  }
+  .note b{color:var(--text);}
+  .note a{color:var(--accent);}
+
+  .childlist{display:flex; flex-wrap:wrap; gap:6px; margin-top:2px;}
+  .chip{
+    font-family:'IBM Plex Mono',monospace; font-size:11.5px;
+    background:var(--surface-2); border:1px solid var(--border); color:var(--text-dim);
+    padding:6px 10px; border-radius:16px; cursor:pointer; transition:all .12s;
+  }
+  .chip:hover{border-color:var(--accent); color:var(--text);}
+  .chip.active{background:var(--accent-soft); border-color:var(--accent); color:var(--accent);}
+  .chip.dead{background:rgba(204,75,63,0.16); border-color:#8a3a33; color:#e0796b;}
+  .chip.dead:hover{border-color:#e0796b;}
+
+  .minimap{display:flex; gap:3px; margin-top:8px;}
+  .minimap .seg{flex:1; height:22px; border-radius:3px; background:var(--surface-2); border:1px solid var(--border);
+    cursor:pointer; position:relative;}
+  .minimap .seg:hover{border-color:var(--text-dim);}
+  .minimap .seg.active{background:var(--accent-soft); border-color:var(--accent);}
+  .minimap .seg.has-dead{box-shadow:inset 0 0 0 1px #a8433a;}
+  .minimap .seg span{position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:'IBM Plex Mono',monospace; font-size:8.5px; color:var(--text-faint);}
+  .minimap .seg.active span{color:var(--accent);}
+  .minimap .seg.has-dead span{color:#e0796b;}
+
+  .deadbtn{
+    width:100%; margin-top:14px; padding:10px 12px; border-radius:8px; cursor:pointer;
+    font-family:'IBM Plex Sans',sans-serif; font-size:12.5px; font-weight:600; letter-spacing:.01em;
+    background:rgba(204,75,63,0.14); border:1px solid #8a3a33; color:#e0796b; transition:filter .12s;
+  }
+  .deadbtn:hover{filter:brightness(1.15);}
+  .deadbtn.is-dead{background:rgba(127,217,160,0.12); border-color:#3f7a56; color:#7fd9a0;}
+
+  .editnamebtn{
+    width:100%; margin-top:14px; padding:9px 12px; border-radius:8px; cursor:pointer;
+    font-family:'IBM Plex Sans',sans-serif; font-size:12px; font-weight:600; letter-spacing:.01em;
+    background:var(--surface-2); border:1px solid var(--border); color:var(--text-dim); transition:filter .12s, color .12s, border-color .12s;
+  }
+  .editnamebtn:hover{color:var(--text); border-color:var(--accent);}
+
+  /* ---------- Hint / legend ---------- */
+  #hint{
+    position:absolute; left:20px; bottom:20px; z-index:4;
+    font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-faint);
+    background:rgba(18,24,31,0.82); border:1px solid var(--border); border-radius:8px;
+    padding:9px 13px; line-height:1.7; backdrop-filter:blur(6px);
+  }
+  #hint b{color:var(--text-dim); font-weight:500;}
+
+  #scalebar{
+    position:absolute; left:20px; top:64px; z-index:4;
+    font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--text-faint);
+    background:rgba(18,24,31,0.82); border:1px solid var(--border); border-radius:8px;
+    padding:8px 12px; backdrop-filter:blur(6px);
+  }
+
+  #loading{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    background:var(--bg); z-index:20; flex-direction:column; gap:10px;
+    font-family:'IBM Plex Mono',monospace; color:var(--text-faint); font-size:12px; letter-spacing:.08em;
+  }
+  #loading .spin{width:22px; height:22px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent);
+    animation:spin 0.8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  @media (max-width: 760px){
+    #infopanel{width:74vw;}
+    #wordmark span{display:none;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .spin{animation:none;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvas-wrap"></div>
+
+  <div id="loading"><div class="spin"></div>BUILDING GEOMETRY</div>
+
+  <div id="topbar">
+    <div id="wordmark">TRACKER<br><small>Straw&nbsp;Tube&nbsp;Explorer</small></div>
+    <nav id="breadcrumb"></nav>
+    <div id="jumpwrap">
+      <button id="names-btn" type="button">Edit names…</button>
+      <button id="jump-btn" type="button">Jump to…</button>
+    </div>
+  </div>
+
+  <div id="jumpbox">
+    <div class="row">
+      <label for="sel-station">Station (0–17)</label>
+      <select id="sel-station"></select>
+    </div>
+    <div class="row">
+      <label for="sel-plane">Plane</label>
+      <select id="sel-plane"></select>
+    </div>
+    <div class="row">
+      <label for="sel-panel">Panel</label>
+      <select id="sel-panel"></select>
+    </div>
+    <div class="row">
+      <label for="sel-straw">Straw (0–95)</label>
+      <select id="sel-straw"></select>
+    </div>
+    <button class="go" id="jump-go" type="button">Go</button>
+  </div>
+
+  <div id="namesOverlay">
+    <div id="namesModal" role="dialog" aria-label="Edit station, plane and panel names">
+      <div class="namesHeader">
+        <h2>Station, plane &amp; panel names</h2>
+        <button id="names-close" type="button" aria-label="Close">×</button>
+      </div>
+      <p class="namesIntro">Slot numbers (Station 0–<span id="names-max-slot"></span>, Plane 1–2, Panel 1–6) are the fixed addresses used for navigation everywhere else in this file. The real hardware doesn't follow that numbering, so give each slot its own name below — saved automatically in this browser as you type.</p>
+
+      <div class="namesSection">
+        <div class="namesSectionHead">
+          <h3>Stations</h3>
+          <button type="button" class="bulkToggle" id="stations-bulk-toggle">Paste a list…</button>
+        </div>
+        <div id="stations-bulk-box" class="bulkBox" hidden>
+          <textarea id="stations-bulk-text" rows="6" placeholder="One name per line, Slot 0 first, Slot 1 next, and so on"></textarea>
+          <button type="button" class="bulkFill" id="stations-bulk-fill">Fill from list</button>
+        </div>
+        <div id="stations-list" class="namesGrid"></div>
+      </div>
+
+      <div class="namesSection">
+        <h3>Planes &amp; panels <span class="namesSectionHint">(per station — click a slot to expand)</span></h3>
+        <div id="station-accordions"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="scalebar">700&nbsp;mm manifold radius · 100&nbsp;mm station depth</div>
+
+  <aside id="infopanel"></aside>
+
+  <div id="hint"><b>Drag</b> orbit &nbsp; <b>Scroll</b> zoom &nbsp; <b>Click</b> select / drill in</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.149.0/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* =====================================================================
+   REAL GEOMETRY PARAMETERS
+   Measured directly from the user's Onshape "Station" export (STL,
+   969,408 triangles). The manifold ring sits at a constant radius of
+   700.000 mm, the outer support rim at 800.000 mm, and the station is
+   100 mm deep along its axis, built from four 25 mm bands (front/back
+   face of each of two planes). Panel gaps repeat every 120° with a
+   measured ~30° gap, and each successive band is rotated 30° from the
+   last. Straw-pair rows inside each panel sit ~7.25 mm and ~17.75 mm
+   into their band. Panel/straw counts (2 planes · 6 panels · 96 straws)
+   match Mu2e tracker documentation exactly. Values not present in the
+   geometry itself (straw wall/wire specs, active-length range, overall
+   18-station tracker length) are cited from published Mu2e sources —
+   see the note in the Straw and Tracker panels.
+
+   PANEL SHAPE + STRAW LAYOUT (added from a real single-panel STL export,
+   "Panel_1.stl", after the multi-station export above only confirmed the
+   bare manifold ring): that file is a genuine watertight solid plate,
+   700–800 mm radius, spanning the SAME 120° at both its inner (straw)
+   edge and its outer (rim) edge — not a taper down to a narrower inner
+   edge as first assumed. It's drawn filled now, not as a bare outline.
+   Slicing that STL at each straw layer's z-height (Euler-characteristic
+   check: genus 96, i.e. 48 per layer) shows the 48 "holes" per layer are
+   not small round mounting holes at all — each is a long, straight chord
+   of the r=700mm manifold circle, and the 48 chords step inward in even
+   ~6.25 mm increments (the documented straw pitch) from near the panel's
+   flat corners to near its apex. That's exactly a fan of straws with
+   graduated lengths, longest near the middle and shortest near the
+   edges — which is also exactly what the file's own published spec
+   ("Active length: 334–1174 mm (by position)") already said, just not
+   wired into the geometry before. Straw length/position below is now
+   derived from that chord geometry instead of guessed: each straw is a
+   long tangential tube at a measured radial offset, not a short radial
+   pin, and it spans nearly the panel's full angular width instead of a
+   narrow slice around the panel's center.
+   ===================================================================== */
+const R_MANIFOLD   = 700;
+const R_RIM         = 800;
+const STATION_DEPTH = 100;
+const STATION_Z0    = -STATION_DEPTH/2;      // -50
+const BAND_THICK    = STATION_DEPTH/4;        // 25
+const PANEL_CENTERS_BASE = [-105, 15, 135];   // deg, band 0
+// A single panel is a wide "arch": a genuine solid plate spanning the SAME
+// 120° at both its outer (rim) edge and its inner (straw) edge — confirmed
+// directly from the user's single-panel STL ("Panel_1.stl"), which is a
+// real watertight solid, not the earlier guess of a taper down to a
+// narrower ~100° inner edge. PANEL_OUTER_R backs off 0.5mm from R_RIM
+// purely to avoid z-fighting against the outer support-rim's own mesh at
+// the exact same radius — every other value here is the real measurement.
+const PANEL_INNER_R    = R_MANIFOLD;          // mm, inner (straw) edge radius — measured exactly 700.000mm
+const PANEL_OUTER_R    = R_RIM - 0.5;         // mm, outer (rim) edge radius — measured exactly 800.000mm
+const PANEL_OUTER_HALF = 60;                  // deg, half-span of the outer arc (120° total)
+const PANEL_INNER_HALF = 60;                  // deg, half-span of the inner straw edge (120° total, same as outer)
+const PANEL_RIM_SEGMENTS = 3;                 // visual tick marks on the outer arc
+const LAYER_LOCAL_Z  = [7.25, 17.75];         // mm into band
+const STRAWS_PER_LAYER = 48;
+const STRAW_PITCH = 6.25;                     // mm, real straw-to-straw pitch (published spec)
+// Straws are long tangential tubes, not short radial pins: slicing
+// Panel_1.stl through a straw layer shows each of the 48 "holes" is a
+// straight chord of the r=700mm manifold circle, stepping inward by one
+// straw pitch at a time from the panel's flat corners toward its apex.
+// A chord's length is fixed by how far its row sits from the tracker
+// axis (r=700 = R_MANIFOLD - rowOffset), so straw length is *derived*
+// from that geometry, calibrated to land exactly on the published
+// active-length range (334-1174mm) already cited in the Straw panel.
+const STRAW_LEN_MAX = 1174;                   // mm, published active length, longest (near panel center)
+const STRAW_LEN_MIN = 334;                    // mm, published active length, shortest (near panel edges)
+const N_STATIONS = 18;                        // count of stations; valid slots are 0..N_STATIONS-1
+const TRACKER_LENGTH = 3000;                  // mm, published
+const STATION_PITCH = TRACKER_LENGTH / N_STATIONS;
+
+function deg2rad(d){ return d*Math.PI/180; }
+
+/* ---------------- Build the data hierarchy for ONE station -------- */
+function buildStationData(){
+  const planes = [];
+  for(let planeIdx=0; planeIdx<2; planeIdx++){
+    const panels = [];
+    for(let faceIdx=0; faceIdx<2; faceIdx++){
+      const band = planeIdx*2 + faceIdx;
+      const bandZStart = STATION_Z0 + BAND_THICK*band;
+      const bandOffset = 30*band;
+      for(let p=0; p<3; p++){
+        const panelNumber = faceIdx*3 + p + 1; // 1-6
+        const centerDeg = PANEL_CENTERS_BASE[p] + bandOffset;
+        const straws = [];
+        for(let layer=0; layer<2; layer++){
+          const zLocal = bandZStart + LAYER_LOCAL_Z[layer];
+          for(let i=0;i<STRAWS_PER_LAYER;i++){
+            // Row position along the graduated fan: i=0 is the longest
+            // straw (near the panel's flat corners), i=STRAWS_PER_LAYER-1
+            // the shortest (near the apex). The two layers interleave by
+            // half a pitch, matching the real staggered channel packing.
+            const rowT = i + (layer===1 ? 0.5 : 0);
+            const t = rowT/STRAWS_PER_LAYER;
+            const strawLen = STRAW_LEN_MAX - t*(STRAW_LEN_MAX-STRAW_LEN_MIN);
+            const halfLen = strawLen/2;
+            const rowOffset = Math.sqrt(Math.max(0, R_MANIFOLD*R_MANIFOLD - halfLen*halfLen));
+            const halfAngleDeg = Math.asin(Math.min(1,halfLen/R_MANIFOLD)) * 180/Math.PI;
+            // Channel map: 0-95 per panel, left→right, even channels on the
+            // top row (layer index 1, the larger LAYER_LOCAL_Z offset),
+            // odd channels on the bottom row (layer index 0).
+            const isTop = (layer===1);
+            const globalIndex = isTop ? 2*i : 2*i+1; // 0-95
+            straws.push({
+              globalIndex, layer:layer+1, indexInLayer:i, isTop,
+              angleDeg: centerDeg, rowOffset, strawLen, halfAngleDeg,
+              zLocal, planeIdx, panelNumber
+            });
+          }
+        }
+        panels.push({
+          planeIdx, number:panelNumber, face: faceIdx===0?'Front':'Back',
+          band, bandZStart, centerDeg, straws
+        });
+      }
+    }
+    planes.push({ idx:planeIdx, panels });
+  }
+  return planes;
+}
+const STATION_DATA = buildStationData();
+const ALL_PANELS = STATION_DATA.flatMap(pl=>pl.panels);
+const ALL_STRAWS = ALL_PANELS.flatMap(pn=>pn.straws.map(s=>Object.assign({}, s)));
+// flat index of straw within its panel's 96 -> global instance slot
+let _slot = 0;
+ALL_PANELS.forEach(pn=>{ pn.straws.forEach(s=>{ s._slot = _slot++; }); });
+const TOTAL_STRAWS = _slot; // 1152
+
+function panelByKey(planeIdx, number){
+  return ALL_PANELS.find(p=>p.planeIdx===planeIdx && p.number===number);
+}
+
+/* =====================================================================
+   DEAD-STRAW REGISTRY
+   Keyed by "<station>|<slot>" so the same physical slot can be marked
+   dead independently in each of the 18 real stations. Persisted to
+   localStorage (best-effort — file:// origins or locked-down browsers
+   may not retain it, in which case marks just last for the tab).
+   ===================================================================== */
+const DEAD_KEY = 'mu2eTrackerDeadStraws:v1';
+function loadDead(){
+  try{ return new Set(JSON.parse(localStorage.getItem(DEAD_KEY)||'[]')); }
+  catch(e){ return new Set(); }
+}
+function saveDead(){
+  try{ localStorage.setItem(DEAD_KEY, JSON.stringify(Array.from(deadStraws))); }
+  catch(e){ /* best-effort only */ }
+}
+const deadStraws = loadDead();
+function deadKey(station, slot){ return station+'|'+slot; }
+function isDead(station, slot){ return deadStraws.has(deadKey(station, slot)); }
+function setDead(station, slot, val){
+  const k = deadKey(station, slot);
+  if(val) deadStraws.add(k); else deadStraws.delete(k);
+  saveDead();
+}
+function countDeadIn(station, filterFn){
+  let c = 0;
+  deadStraws.forEach(k=>{
+    const [st, sl] = k.split('|').map(Number);
+    if(st===station && (!filterFn || filterFn(sl))) c++;
+  });
+  return c;
+}
+function countDeadTotal(){ return deadStraws.size; }
+function resetDead(){ deadStraws.clear(); saveDead(); render(); }
+
+/* =====================================================================
+   CUSTOM NAMES (Stations, Planes, Panels)
+   Slot numbers — Station 0..17, Plane 1/2, Panel 1..6 — are the fixed
+   structural address used everywhere internally: navigation, the
+   dead-straw registry, the jump-to controls. The real installed
+   hardware doesn't follow that linear numbering (station slots in
+   particular vary wildly), so the names below are a separate, purely
+   cosmetic overlay on top of it — one editable name per physical
+   station, plane and panel, each independent (a panel's name doesn't
+   follow its plane's or station's). Falls back to "Station Slot N" /
+   "Plane N" / "Panel N" until a name is set. Persisted to localStorage,
+   best-effort, same convention as the dead-straw registry above.
+   ===================================================================== */
+const NAMES_KEY = 'mu2eTrackerNames:v1';
+function loadNames(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(NAMES_KEY)||'{}');
+    return {
+      stations: (raw && raw.stations) || {},
+      planes: (raw && raw.planes) || {},
+      panels: (raw && raw.panels) || {}
+    };
+  }catch(e){ return {stations:{}, planes:{}, panels:{}}; }
+}
+function saveNamesData(){
+  try{ localStorage.setItem(NAMES_KEY, JSON.stringify(customNames)); }
+  catch(e){ /* best-effort only */ }
+}
+const customNames = loadNames();
+function planeKey(station, planeIdx){ return station+'|'+planeIdx; }
+function panelKey(station, planeIdx, panelNumber){ return station+'|'+planeIdx+'|'+panelNumber; }
+function stationHasName(n){ return !!(customNames.stations[n]||'').trim(); }
+function planeHasName(station, planeIdx){ return !!(customNames.planes[planeKey(station,planeIdx)]||'').trim(); }
+function panelHasName(station, planeIdx, panelNumber){ return !!(customNames.panels[panelKey(station,planeIdx,panelNumber)]||'').trim(); }
+function stationName(n){ const v=(customNames.stations[n]||'').trim(); return v || `Station Slot ${n}`; }
+function planeName(station, planeIdx){ const v=(customNames.planes[planeKey(station,planeIdx)]||'').trim(); return v || `Plane ${planeIdx+1}`; }
+function panelName(station, planeIdx, panelNumber){ const v=(customNames.panels[panelKey(station,planeIdx,panelNumber)]||'').trim(); return v || `Panel ${panelNumber}`; }
+function stationRingLabel(n){ return stationHasName(n) ? customNames.stations[n].trim() : String(n); }
+function setStationName(n, val){ customNames.stations[n] = val; saveNamesData(); }
+function setPlaneName(station, planeIdx, val){ customNames.planes[planeKey(station,planeIdx)] = val; saveNamesData(); }
+function setPanelName(station, planeIdx, panelNumber, val){ customNames.panels[panelKey(station,planeIdx,panelNumber)] = val; saveNamesData(); }
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* =====================================================================
+   THREE.JS SCENE
+   ===================================================================== */
+const wrap = document.getElementById('canvas-wrap');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a232c);
+scene.fog = new THREE.Fog(0x1a232c, 3600, 9000);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 1, 20000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+wrap.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xaac4d4, 0x2a3542, 0.85));
+const key = new THREE.DirectionalLight(0xfff3dd, 1.5);
+key.position.set(900, 1400, 1600);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x5cc8c2, 0.5);
+rim.position.set(-1200,-600,-900);
+scene.add(rim);
+const fill = new THREE.AmbientLight(0xaebfca, 0.35);
+scene.add(fill);
+const headlamp = new THREE.PointLight(0xfff6e6, 1.3, 0, 2);
+camera.add(headlamp);
+scene.add(camera);
+
+/* ---------------- Minimal orbit-style camera control -------------- */
+const controls = {
+  target: new THREE.Vector3(0,0,0),
+  radius: 4600, minRadius:220, maxRadius:9000,
+  theta: Math.PI*0.28, phi: Math.PI*0.36,
+  pole: 'z', // 'z': orbit around the ring axis (station/plane/panel/straw views,
+             //      beam axis Z renders roughly vertical). 'x': orbit around the
+             //      beam axis instead, so Z renders HORIZONTAL — used only for the
+             //      full-tracker overview, upstream (−z) to the left.
+  dragging:false, lastX:0, lastY:0
+};
+function applyCamera(){
+  const sp = Math.sin(controls.phi), cp = Math.cos(controls.phi);
+  const st = Math.sin(controls.theta), ct = Math.cos(controls.theta);
+  if(controls.pole==='x'){
+    camera.position.set(
+      controls.target.x + controls.radius*cp,
+      controls.target.y + controls.radius*sp*ct,
+      controls.target.z + controls.radius*sp*st
+    );
+    camera.up.set(1,0,0);
+  } else {
+    camera.position.set(
+      controls.target.x + controls.radius*sp*ct,
+      controls.target.y + controls.radius*sp*st,
+      controls.target.z + controls.radius*cp
+    );
+    camera.up.set(0,0,1);
+  }
+  camera.lookAt(controls.target);
+}
+applyCamera();
+
+const dom = renderer.domElement;
+dom.style.touchAction = 'none';
+dom.addEventListener('pointerdown', e=>{
+  controls.dragging = true; controls.lastX = e.clientX; controls.lastY = e.clientY;
+  dom.setPointerCapture(e.pointerId);
+});
+dom.addEventListener('pointerup', e=>{ controls.dragging=false; dom.releasePointerCapture(e.pointerId); });
+dom.addEventListener('pointercancel', ()=>{ controls.dragging=false; });
+dom.addEventListener('pointermove', e=>{
+  if(!controls.dragging){ handleHover(e); return; }
+  const dx = e.clientX-controls.lastX, dy = e.clientY-controls.lastY;
+  controls.lastX = e.clientX; controls.lastY = e.clientY;
+  controls.theta -= dx*0.0055;
+  controls.phi = Math.min(Math.PI*0.85, Math.max(Math.PI*0.06, controls.phi - dy*0.0045));
+  applyCamera();
+});
+dom.addEventListener('wheel', e=>{
+  e.preventDefault();
+  controls.radius = Math.min(controls.maxRadius, Math.max(controls.minRadius, controls.radius*(1+e.deltaY*0.0012)));
+  applyCamera();
+}, {passive:false});
+
+let pendingTarget = null, pendingRadius = null, animT = 1;
+function flyTo(target, radius, theta, phiOpt){
+  pendingTarget = {from:controls.target.clone(), to:new THREE.Vector3(target.x,target.y,target.z)};
+  pendingRadius = {from:controls.radius, to:radius};
+  pendingTheta = {from:controls.theta, to: theta!=null?theta:controls.theta};
+  pendingPhi = {from:controls.phi, to: phiOpt!=null?phiOpt:controls.phi};
+  animT = 0;
+}
+let pendingTheta=null, pendingPhi=null;
+function tickCamera(dt){
+  if(animT<1){
+    animT = Math.min(1, animT + dt/0.65);
+    const e = 1-Math.pow(1-animT,3);
+    controls.target.lerpVectors(pendingTarget.from, pendingTarget.to, e);
+    controls.radius = pendingRadius.from + (pendingRadius.to-pendingRadius.from)*e;
+    controls.theta = pendingTheta.from + (pendingTheta.to-pendingTheta.from)*e;
+    controls.phi = pendingPhi.from + (pendingPhi.to-pendingPhi.from)*e;
+    applyCamera();
+  }
+}
+
+/* =====================================================================
+   GEOMETRY BUILDERS
+   ===================================================================== */
+function curvedPlateGeometry(thetaStartDeg, thetaEndDeg, r, zStart, zEnd, segU){
+  segU = segU || 14;
+  const geo = new THREE.BufferGeometry();
+  const pos = [], nor = [], idx = [];
+  const t0 = deg2rad(thetaStartDeg), t1 = deg2rad(thetaEndDeg);
+  for(let j=0;j<=1;j++){
+    const z = j===0?zStart:zEnd;
+    for(let i=0;i<=segU;i++){
+      const t = t0 + (t1-t0)*(i/segU);
+      const x = r*Math.cos(t), y = r*Math.sin(t);
+      pos.push(x,y,z);
+      nor.push(Math.cos(t), Math.sin(t), 0);
+    }
+  }
+  const rowLen = segU+1;
+  for(let i=0;i<segU;i++){
+    const a=i, b=i+1, c=i+rowLen, d=i+rowLen+1;
+    idx.push(a,c,b, b,c,d);
+  }
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor,3));
+  geo.setIndex(idx);
+  return geo;
+}
+
+function ringGeometry(r, zStart, zEnd, segU){
+  return curvedPlateGeometry(-180,180,r,zStart,zEnd, segU||96);
+}
+
+/* ---- Panel "arch" outline: a true annulus-sector plate — a 120° outer
+   arc (the 3-piece support-rim segment this panel bolts to) and a 120°
+   inner arc where the straws mount, both real circular arcs at their own
+   fixed radius. (Confirmed from Panel_1.stl: the 48 straw chords per layer
+   touch the inner boundary at r=700.000mm across a whole spread of angles,
+   not just at two corners — so that edge has to be a genuine arc, not the
+   straight corner-to-corner chord this used to draw.) The boundary loop is
+   also used to back an (invisible) hit-test mesh for click-to-select. ---- */
+function panelArchPolygon(centerDeg){
+  const mStart = centerDeg - PANEL_INNER_HALF;
+  const mEnd   = centerDeg + PANEL_INNER_HALF;
+  const rStart = centerDeg - PANEL_OUTER_HALF;
+  const rEnd   = centerDeg + PANEL_OUTER_HALF;
+  const rimSegs = 24;
+  const pts = [];
+  for(let i=0;i<=rimSegs;i++){
+    const k = i/rimSegs;
+    pts.push({t: mStart + (mEnd-mStart)*k, r:PANEL_INNER_R});
+  }
+  for(let i=0;i<=rimSegs;i++){
+    const k = i/rimSegs;
+    pts.push({t: rEnd + (rStart-rEnd)*k, r:PANEL_OUTER_R});
+  }
+  return pts; // ordered boundary loop, degrees + mm
+}
+
+function extrudePolygonSolid(poly, zStart, zEnd){
+  const geo = new THREE.BufferGeometry();
+  const pos = [], nor = [], idx = [];
+  const n = poly.length;
+  const xy = poly.map(p=>{ const rad=deg2rad(p.t); return [p.r*Math.cos(rad), p.r*Math.sin(rad)]; });
+
+  // Front cap (z = zStart, normal -z) and back cap (z = zEnd, normal +z).
+  // poly is always two mirrored arcs (see panelArchPolygon): the first
+  // half is the inner arc ascending in angle, the second half the outer
+  // arc descending back — so column k pairs inner point k with outer
+  // point n-1-k (same angle). Triangulating quad-by-quad this way keeps
+  // every triangle local to one narrow angular slice; a naive fan from a
+  // single corner vertex would draw long diagonals straight across the
+  // sector, folding through the empty middle for a span this wide.
+  function addCap(z, flip){
+    const base = pos.length/3;
+    for(let i=0;i<n;i++) pos.push(xy[i][0], xy[i][1], z);
+    for(let i=0;i<n;i++) nor.push(0,0, flip?1:-1);
+    const segs = n/2 - 1;
+    for(let k=0;k<segs;k++){
+      const iA=k, iB=k+1, iC=n-2-k, iD=n-1-k; // iA,iB inner; iD,iC outer (same angles resp.)
+      if(flip){
+        idx.push(base+iA, base+iB, base+iC);
+        idx.push(base+iA, base+iC, base+iD);
+      } else {
+        idx.push(base+iA, base+iC, base+iB);
+        idx.push(base+iA, base+iD, base+iC);
+      }
+    }
+  }
+  addCap(zStart, false);
+  addCap(zEnd, true);
+
+  // Side walls: one quad per boundary edge, connecting the two caps.
+  for(let i=0;i<n;i++){
+    const a = xy[i], b = xy[(i+1)%n];
+    let nx = b[1]-a[1], ny = -(b[0]-a[0]);
+    const len = Math.hypot(nx,ny)||1; nx/=len; ny/=len;
+    const base = pos.length/3;
+    pos.push(a[0],a[1],zStart,  b[0],b[1],zStart,  a[0],a[1],zEnd,  b[0],b[1],zEnd);
+    for(let k=0;k<4;k++) nor.push(nx,ny,0);
+    idx.push(base,base+2,base+1, base+1,base+2,base+3);
+  }
+
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor,3));
+  geo.setIndex(idx);
+  return geo;
+}
+
+/* ---- Billboard text labels (canvas-texture sprites, fixed screen size) --- */
+function makeLabelSprite(text, opts){
+  opts = opts || {};
+  const fontSize = opts.fontSize || 60;
+  const weight = opts.weight || 700;
+  const color = opts.color || '#e7edf2';
+  const font = `${weight} ${fontSize}px 'Big Shoulders Display', Arial, sans-serif`;
+  const pad = 14;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.font = font;
+  const textW = Math.max(1, ctx.measureText(text).width);
+  canvas.width = Math.ceil(textW + pad*2);
+  canvas.height = Math.ceil(fontSize*1.3 + pad);
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, canvas.width/2, canvas.height/2 + fontSize*0.03);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  const mat = new THREE.SpriteMaterial({
+    map:tex, transparent:true, depthTest: opts.depthTest!==false, sizeAttenuation:false
+  });
+  const sprite = new THREE.Sprite(mat);
+  let h = opts.size || 0.05;
+  if(opts.capWidth){
+    // Custom names can run much longer than the "0".."17" slot numbers
+    // this label type was designed around; without this, a long name
+    // renders far wider than its neighbors and overlaps them on the
+    // ring. Shrink the font so the label never exceeds the width of a
+    // two-digit slot number ("88"), rather than truncating the text.
+    const refW = ctx.measureText('88').width;
+    h *= Math.min(1, refW/textW);
+  }
+  sprite.scale.set(h*(canvas.width/canvas.height), h, 1);
+  sprite.renderOrder = 10;
+  sprite.userData.labelOpts = opts; // stashed so updateLabelSprite() can redraw with the same styling
+  return sprite;
+}
+
+/* Redraws a sprite made by makeLabelSprite() with new text — used to
+   refresh the tracker-overview station labels live when a custom name
+   is saved, without rebuilding the whole scene. */
+function updateLabelSprite(sprite, text){
+  const opts = sprite.userData.labelOpts || {};
+  const fontSize = opts.fontSize || 60;
+  const weight = opts.weight || 700;
+  const color = opts.color || '#e7edf2';
+  const font = `${weight} ${fontSize}px 'Big Shoulders Display', Arial, sans-serif`;
+  const pad = 14;
+  // A fresh canvas (rather than resizing the sprite's existing one) —
+  // WebGL textures don't reliably resize in place when the backing
+  // canvas's width/height change, so reusing the old canvas at a new
+  // size can leave the new text squashed into the old texture's shape.
+  // A new CanvasTexture avoids that entirely.
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.font = font;
+  const textW = Math.max(1, ctx.measureText(text).width);
+  canvas.width = Math.ceil(textW + pad*2);
+  canvas.height = Math.ceil(fontSize*1.3 + pad);
+  ctx.font = font; // sizing the canvas resets context state, so re-set it
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, canvas.width/2, canvas.height/2 + fontSize*0.03);
+
+  const oldTex = sprite.material.map;
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  sprite.material.map = tex;
+  sprite.material.needsUpdate = true;
+  if(oldTex) oldTex.dispose();
+
+  let h = opts.size || 0.05;
+  if(opts.capWidth){
+    const refW = ctx.measureText('88').width;
+    h *= Math.min(1, refW/textW);
+  }
+  sprite.scale.set(h*(canvas.width/canvas.height), h, 1);
+}
+
+/* ---- Panel plates (12 per station: 6 per plane) ----
+   Panel_1.stl confirmed this is a genuine solid plate (watertight, both
+   edges real 120° arcs), so it's drawn filled now — translucent enough
+   that straws are still visible through the front face, but a real plate
+   rather than the earlier near-invisible (opacity 0.02) placeholder.
+   depthWrite is back on so the plate correctly occludes/is-occluded by
+   the straws behind or in front of it. ---- */
+const PLANE_COLOR = [0x5cc8c2, 0xe08a4f];
+const panelMeshes = []; // parallel to ALL_PANELS
+const panelGroup = new THREE.Group();
+ALL_PANELS.forEach((pn)=>{
+  const poly = panelArchPolygon(pn.centerDeg);
+  const geo = extrudePolygonSolid(poly, pn.bandZStart + 1.5, pn.bandZStart + BAND_THICK - 1.5);
+  const mat = new THREE.MeshStandardMaterial({
+    color: PLANE_COLOR[pn.planeIdx], metalness:0.55, roughness:0.5,
+    side: THREE.DoubleSide, transparent:true, opacity:0.32,
+    emissive:0x000000, depthWrite:true
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = {type:'panel', planeIdx:pn.planeIdx, panelNumber:pn.number};
+  panelGroup.add(mesh);
+
+  const frontZ = pn.bandZStart + BAND_THICK - 1.4;
+  const edgePts = poly.map(p=>{
+    const rad = deg2rad(p.t);
+    return new THREE.Vector3(p.r*Math.cos(rad), p.r*Math.sin(rad), frontZ);
+  });
+  edgePts.push(edgePts[0].clone());
+  const edgeGeo = new THREE.BufferGeometry().setFromPoints(edgePts);
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: PLANE_COLOR[pn.planeIdx], transparent:true, opacity:0.55
+  });
+  const edgeLine = new THREE.Line(edgeGeo, edgeMat);
+  mesh.add(edgeLine); // child of the plate mesh so it follows the same per-level visibility toggling
+  mesh.userData.edgeMat = edgeMat; // setVisibility() dims this in step with the outline, so a
+                                    // panel that's faded to near-nothing doesn't leave a bright outline behind
+
+  // Two tick marks on the outer arc, splitting it into 3 visual segments
+  // (matching the 3-piece support-rim segment this panel spans).
+  const tickPts = [];
+  for(let k=1;k<PANEL_RIM_SEGMENTS;k++){
+    const t = pn.centerDeg + PANEL_OUTER_HALF - (2*PANEL_OUTER_HALF)*(k/PANEL_RIM_SEGMENTS);
+    const rad = deg2rad(t);
+    const cx = Math.cos(rad), sx = Math.sin(rad);
+    tickPts.push(
+      new THREE.Vector3((PANEL_OUTER_R-14)*cx, (PANEL_OUTER_R-14)*sx, frontZ),
+      new THREE.Vector3((PANEL_OUTER_R+8)*cx, (PANEL_OUTER_R+8)*sx, frontZ)
+    );
+  }
+  const tickGeo = new THREE.BufferGeometry().setFromPoints(tickPts);
+  mesh.add(new THREE.LineSegments(tickGeo, edgeMat));
+
+  panelMeshes.push(mesh);
+});
+scene.add(panelGroup);
+
+/* ---- Panel labels: "P1"…"P6" hovering just past the support rim ---- */
+const panelLabels = []; // parallel to ALL_PANELS
+ALL_PANELS.forEach(pn=>{
+  const rad = deg2rad(pn.centerDeg);
+  const label = makeLabelSprite('P'+pn.number, {size:0.032, color:'#cfe3e6'});
+  label.position.set((R_RIM+55)*Math.cos(rad), (R_RIM+55)*Math.sin(rad), pn.bandZStart+BAND_THICK/2);
+  panelGroup.add(label);
+  panelLabels.push(label);
+});
+
+/* ---- Plane labels: "PLANE 1" / "PLANE 2", separated around the ring so
+   the two (only 50mm apart along the axis) never overlap on screen ---- */
+const PLANE_LABEL_THETA = [deg2rad(-160), deg2rad(-80)];
+const planeLabels = STATION_DATA.map(pl=>{
+  const midZ = STATION_Z0 + BAND_THICK + pl.idx*(BAND_THICK*2);
+  const th = PLANE_LABEL_THETA[pl.idx];
+  const label = makeLabelSprite('PLANE '+(pl.idx+1), {size:0.036, color: pl.idx===0 ? '#8fe0da' : '#f2b27e'});
+  label.position.set((R_RIM+150)*Math.cos(th), (R_RIM+150)*Math.sin(th), midZ);
+  panelGroup.add(label);
+  return label;
+});
+
+/* ---- Outer support rim (context only) ---- */
+const rimMesh = new THREE.Mesh(
+  ringGeometry(R_RIM, STATION_Z0, STATION_Z0+STATION_DEPTH, 96),
+  new THREE.MeshStandardMaterial({color:0x3a4753, metalness:0.7, roughness:0.4, side:THREE.DoubleSide, transparent:true, opacity:0.22})
+);
+scene.add(rimMesh);
+
+/* ---- Inner reference circle (active envelope inner bound, ~400mm) --- */
+{
+  const pts = [];
+  for(let i=0;i<=128;i++){ const t=deg2rad(i*360/128); pts.push(new THREE.Vector3(400*Math.cos(t),400*Math.sin(t), 0)); }
+  const lgeo = new THREE.BufferGeometry().setFromPoints(pts);
+  const lmat = new THREE.LineDashedMaterial({color:0x546472, dashSize:8, gapSize:6, transparent:true, opacity:0.5});
+  const line = new THREE.LineLoop(lgeo, lmat);
+  line.computeLineDistances();
+  scene.add(line);
+}
+
+/* ---- Straws: one InstancedMesh, long tangential tubes at their real
+   chord position — see the header-comment note on Panel_1.stl. Each straw
+   sits at radius s.rowOffset along the panel's own bisector, with its
+   axis running tangentially (perpendicular to that bisector) and a length
+   fixed by that chord geometry, instead of a short radial pin. The base
+   cylinder is unit-height so a per-instance non-uniform scale can stretch
+   it to each straw's own real length. --- */
+const STRAW_R = 2.5; // mm, real straw outer radius (5mm OD / 2)
+const strawGeo = new THREE.CylinderGeometry(STRAW_R, STRAW_R, 1, 8, 1, false);
+const strawMat = new THREE.MeshStandardMaterial({metalness:0.35, roughness:0.5, vertexColors:true});
+const strawMesh = new THREE.InstancedMesh(strawGeo, strawMat, TOTAL_STRAWS);
+strawMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(TOTAL_STRAWS*3), 3);
+const dummy = new THREE.Object3D();
+const UP = new THREE.Vector3(0,1,0);
+const GOLD = new THREE.Color(0xd9a441);
+const BASE_COL = new THREE.Color(0xc7d3da);
+const DIM_COL = new THREE.Color(0x2a333c);
+const DEAD_COL = new THREE.Color(0xff3b2f);
+const DEAD_SEL_COL = new THREE.Color(0xffffff);
+
+// Shared geometry for one straw: its radial (bisector) direction, its
+// tangential (axis) direction, its chord center, and the two endpoints
+// where it terminates against the r=700mm manifold circle.
+function strawGeometry(s){
+  const rad = deg2rad(s.angleDeg);
+  const radial = new THREE.Vector3(Math.cos(rad), Math.sin(rad), 0);
+  const tangent = new THREE.Vector3(-Math.sin(rad), Math.cos(rad), 0);
+  const center = radial.clone().multiplyScalar(s.rowOffset);
+  center.z = s.zLocal;
+  const half = s.strawLen/2;
+  const endA = center.clone().addScaledVector(tangent, half);
+  const endB = center.clone().addScaledVector(tangent, -half);
+  return {radial, tangent, center, endA, endB};
+}
+
+ALL_PANELS.forEach(pn=>{
+  pn.straws.forEach(s=>{
+    const g = strawGeometry(s);
+    dummy.position.copy(g.center);
+    dummy.quaternion.setFromUnitVectors(UP, g.tangent);
+    dummy.scale.set(1,s.strawLen,1);
+    dummy.updateMatrix();
+    strawMesh.setMatrixAt(s._slot, dummy.matrix);
+    strawMesh.setColorAt(s._slot, BASE_COL);
+  });
+});
+strawMesh.instanceMatrix.needsUpdate = true;
+strawMesh.instanceColor.needsUpdate = true;
+scene.add(strawMesh);
+
+/* ---- Unlit selection marker: always reads as gold regardless of light angle --- */
+const selMarker = new THREE.Mesh(
+  new THREE.TorusGeometry(STRAW_R*1.7+6, 2.2, 12, 32),
+  new THREE.MeshBasicMaterial({color:0xf3c465})
+);
+selMarker.visible = false;
+strawMesh.add(selMarker);
+
+/* ---- Unlit dead-straw markers: a small pool of always-visible red rings,
+   repositioned onto whichever dead straws are in the currently open panel
+   (up to one panel's worth, 96). Unlit for the same reason as selMarker —
+   the shaded instance color alone can look dark end-on regardless of hue. --- */
+const DEAD_MARKER_POOL_SIZE = STRAWS_PER_LAYER*2;
+const deadMarkerPool = [];
+for(let i=0;i<DEAD_MARKER_POOL_SIZE;i++){
+  const m = new THREE.Mesh(
+    new THREE.TorusGeometry(STRAW_R*1.4+3, 1.4, 10, 24),
+    new THREE.MeshBasicMaterial({color:0xff3b2f})
+  );
+  m.visible = false;
+  strawMesh.add(m);
+  deadMarkerPool.push(m);
+}
+
+/* ---- Tracker overview: 18 simplified station proxies (slots 0..17) --- */
+const trackerGroup = new THREE.Group();
+const stationProxies = [];
+const stationLabelSprites = []; // parallel to stationProxies, index = slot n
+for(let n=0;n<N_STATIONS;n++){
+  const cz = stationCenterZ(n);
+  const geo = ringGeometry(R_RIM*0.985, cz-STATION_DEPTH*0.42, cz+STATION_DEPTH*0.42, 40);
+  const mat = new THREE.MeshStandardMaterial({color:0x4a5a68, metalness:0.6, roughness:0.5, side:THREE.DoubleSide, transparent:true, opacity:0.55});
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData = {type:'stationProxy', n};
+  trackerGroup.add(mesh);
+  stationProxies.push(mesh);
+
+  // Shows the custom station name once set (see CUSTOM NAMES below),
+  // else falls back to the bare slot number.
+  const label = makeLabelSprite(stationRingLabel(n), {size:0.03, color:'#c3ccd3', capWidth:true});
+  label.position.set(R_RIM*0.985+70, 0, cz);
+  // Merge in rather than replace — makeLabelSprite() already stashed
+  // labelOpts on userData for updateLabelSprite() to read later.
+  Object.assign(label.userData, {type:'stationLabel', n});
+  trackerGroup.add(label);
+  stationLabelSprites.push(label);
+}
+scene.add(trackerGroup);
+function refreshStationLabels(){
+  stationLabelSprites.forEach((label,n)=>{ updateLabelSprite(label, stationRingLabel(n)); });
+}
+
+/* ---- Upstream → downstream beam-direction arrow (tracker view only) ----
+   The tracker overview orbits around the beam axis (Z renders horizontal,
+   see controls.pole), so these sit offset along X — "below" the ring on
+   screen — rather than Y. ---- */
+const BEAM_X_OFFSET = -(R_RIM + 650);
+const beamZ0 = -TRACKER_LENGTH/2 - 60;    // upstream end (Station Slot 01)
+const beamZ1 =  TRACKER_LENGTH/2 + 60;    // downstream end (Station Slot 17)
+const beamGroup = new THREE.Group();
+const BEAM_HEAD_LEN = 160, BEAM_HEAD_R = 60, BEAM_SHAFT_R = 22;
+const shaftLen = (beamZ1-beamZ0) - BEAM_HEAD_LEN;
+const beamShaft = new THREE.Mesh(
+  new THREE.CylinderGeometry(BEAM_SHAFT_R, BEAM_SHAFT_R, shaftLen, 20),
+  new THREE.MeshBasicMaterial({color:0xd9a441})
+);
+beamShaft.rotation.x = Math.PI/2; // cylinder axis Y -> Z
+beamShaft.position.z = beamZ0 + shaftLen/2;
+beamGroup.add(beamShaft);
+const beamHead = new THREE.Mesh(
+  new THREE.ConeGeometry(BEAM_HEAD_R, BEAM_HEAD_LEN, 24),
+  new THREE.MeshBasicMaterial({color:0xd9a441})
+);
+beamHead.rotation.x = Math.PI/2;
+beamHead.position.z = beamZ0 + shaftLen + BEAM_HEAD_LEN/2;
+beamGroup.add(beamHead);
+beamGroup.position.x = BEAM_X_OFFSET;
+trackerGroup.add(beamGroup);
+
+const upstreamLabel = makeLabelSprite('UPSTREAM', {size:0.032, color:'#d9a441', weight:800});
+upstreamLabel.position.set(BEAM_X_OFFSET-90, 0, beamZ0+40);
+trackerGroup.add(upstreamLabel);
+const downstreamLabel = makeLabelSprite('DOWNSTREAM', {size:0.032, color:'#d9a441', weight:800});
+downstreamLabel.position.set(BEAM_X_OFFSET-90, 0, beamZ1-160);
+trackerGroup.add(downstreamLabel);
+const beamCaption = makeLabelSprite('beam direction: Station Slot 0 → Station Slot 17', {size:0.022, color:'#8ea0ac', weight:500});
+beamCaption.position.set(BEAM_X_OFFSET+120, 0, (beamZ0+beamZ1)/2);
+trackerGroup.add(beamCaption);
+
+/* =====================================================================
+   NAVIGATION STATE
+   ===================================================================== */
+const state = { level:'tracker', station:1, planeIdx:null, panelNumber:null, strawSlot:null, hover:null };
+
+function stationCenterZ(n){ return -TRACKER_LENGTH/2 + STATION_PITCH*(n+0.5); } // n is 0-indexed (0..N_STATIONS-1)
+
+function setVisibility(){
+  const atTracker = state.level==='tracker';
+  trackerGroup.visible = atTracker;
+  panelGroup.visible = !atTracker;
+  rimMesh.visible = !atTracker;
+  strawMesh.visible = !atTracker && (state.level==='panel' || state.level==='straw');
+
+  if(!atTracker){
+    const cz = stationCenterZ(state.station);
+    panelGroup.position.z = cz;
+    rimMesh.position.z = cz;
+    strawMesh.position.z = cz;
+  }
+
+  panelMeshes.forEach((mesh,i)=>{
+    const pn = ALL_PANELS[i];
+    // Real, visibly-filled plates now (see the note above) — dimmed for
+    // context panels outside the current drill-down so the selected one,
+    // and the straws inside it, stay easy to read.
+    let opacity = 0.32, emissiveHex = 0x000000, edgeOpacity = 0.4;
+    if(state.level==='plane'){
+      const inPlane = pn.planeIdx===state.planeIdx;
+      opacity = inPlane ? 0.36 : 0.1;
+      edgeOpacity = inPlane ? 0.55 : 0.05;
+    } else if(state.level==='panel' || state.level==='straw'){
+      const isSel = (pn.planeIdx===state.planeIdx && pn.number===state.panelNumber);
+      opacity = isSel ? 0.4 : 0.12;
+      edgeOpacity = isSel ? 0.6 : 0.03;
+      if(isSel) emissiveHex = 0x2b1d05;
+    }
+    mesh.material.opacity = opacity;
+    mesh.material.emissive.setHex(emissiveHex);
+    mesh.userData.edgeMat.opacity = edgeOpacity;
+  });
+
+  const showPanelLabels = (state.level==='station' || state.level==='plane');
+  panelLabels.forEach((label,i)=>{
+    const pn = ALL_PANELS[i];
+    label.visible = showPanelLabels && (state.level==='station' || pn.planeIdx===state.planeIdx);
+  });
+  planeLabels.forEach((label,i)=>{ label.visible = showPanelLabels; });
+
+  if(strawMesh.visible){
+    let deadMarkerCount = 0;
+    ALL_PANELS.forEach(pn=>{
+      const isSelPanel = (pn.planeIdx===state.planeIdx && pn.number===state.panelNumber);
+      pn.straws.forEach(s=>{
+        const dead = isSelPanel && isDead(state.station, s._slot);
+        const isSelStraw = state.level==='straw' && s._slot===state.strawSlot;
+        let col = BASE_COL;
+        if(!isSelPanel){ col = DIM_COL; }
+        else if(dead && isSelStraw){ col = DEAD_SEL_COL; } // the one you're looking at, marked dead: white
+        else if(dead){ col = DEAD_COL; }                   // any other dead straw in this panel: red
+        else if(isSelStraw){ col = GOLD; }
+        strawMesh.setColorAt(s._slot, col);
+        let rsc = isSelPanel ? 1 : 0.001; // radius scale only — length stays real
+        if(isSelPanel && dead) rsc = 0.62;
+        if(state.level==='straw' && s._slot===state.strawSlot){ rsc = 1.7; }
+        // preserve position/orientation: recompute quickly from stored data
+        const g = strawGeometry(s);
+        dummy.position.copy(g.center);
+        dummy.quaternion.setFromUnitVectors(UP, g.tangent);
+        dummy.scale.set(rsc, s.strawLen, rsc);
+        dummy.updateMatrix();
+        strawMesh.setMatrixAt(s._slot, dummy.matrix);
+        // Unlit marker for any OTHER dead straw in this panel (the selected
+        // one already gets its own white selMarker ring) — guarantees the
+        // red flag reads even when the shaded instance color looks dark.
+        if(dead && !isSelStraw && deadMarkerCount < deadMarkerPool.length){
+          const mk = deadMarkerPool[deadMarkerCount++];
+          mk.position.copy(g.endA);
+          mk.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), g.tangent);
+          mk.visible = true;
+        }
+      });
+    });
+    strawMesh.instanceColor.needsUpdate = true;
+    strawMesh.instanceMatrix.needsUpdate = true;
+    for(let i=deadMarkerCount; i<deadMarkerPool.length; i++){ deadMarkerPool[i].visible = false; }
+  } else {
+    deadMarkerPool.forEach(m=>{ m.visible = false; });
+  }
+
+  if(state.level==='straw'){
+    const pn = panelByKey(state.planeIdx, state.panelNumber);
+    const s = pn.straws.find(s=>s._slot===state.strawSlot);
+    const g = strawGeometry(s);
+    selMarker.position.copy(g.endA);
+    selMarker.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1), g.tangent);
+    selMarker.visible = true;
+    // The straw's own instance color can look dark end-on regardless of hue
+    // (a flat cap facing the camera catches little light), so — like the
+    // marker ring itself — flip its color directly rather than relying on
+    // scene lighting to show the dead/live state.
+    selMarker.material.color.setHex(isDead(state.station, s._slot) ? 0xffffff : 0xf3c465);
+  } else {
+    selMarker.visible = false;
+  }
+
+  stationProxies.forEach(m=>{
+    m.material.opacity = (atTracker && m.userData.n===state.station) ? 0.85 : (atTracker?0.42:0.42);
+    m.material.color.setHex(atTracker && m.userData.n===state.station ? 0xd9a441 : 0x4a5a68);
+  });
+}
+
+function frameForLevel(){
+  if(state.level==='tracker'){
+    controls.pole = 'x'; // beam axis (Z) horizontal, upstream (station Slot 0, −z) at left
+    flyTo({x:0,y:0,z:0}, 6600, 0, Math.PI*0.42);
+    return;
+  }
+  controls.pole = 'z';
+  if(state.level==='station'){
+    flyTo({x:0,y:0,z:stationCenterZ(state.station)}, 2100, controls.theta, Math.PI*0.36);
+  } else if(state.level==='plane'){
+    const pl = STATION_DATA[state.planeIdx];
+    const cz = pl.panels[0].bandZStart + BAND_THICK; // mid of the 2-band plane, local
+    flyTo({x:0,y:0,z:stationCenterZ(state.station)+cz-STATION_Z0-25}, 1500, controls.theta, Math.PI*0.40);
+  } else if(state.level==='panel'){
+    const pn = panelByKey(state.planeIdx, state.panelNumber);
+    const rad = deg2rad(pn.centerDeg);
+    const cz = pn.bandZStart + BAND_THICK/2;
+    flyTo({
+      x:R_MANIFOLD*Math.cos(rad), y:R_MANIFOLD*Math.sin(rad),
+      z:stationCenterZ(state.station)+cz
+    }, 620, rad, Math.PI*0.44);
+  } else if(state.level==='straw'){
+    const pn = panelByKey(state.planeIdx, state.panelNumber);
+    const s = pn.straws.find(s=>s._slot===state.strawSlot);
+    const g = strawGeometry(s);
+    flyTo({
+      x:g.center.x, y:g.center.y,
+      z:stationCenterZ(state.station)+s.zLocal
+    }, 110, deg2rad(s.angleDeg), Math.PI*0.44);
+  }
+}
+
+/* =====================================================================
+   BREADCRUMB + INFO PANEL
+   ===================================================================== */
+const crumbEl = document.getElementById('breadcrumb');
+const infoEl = document.getElementById('infopanel');
+
+function fmt(n, d){ return n.toLocaleString(undefined, {maximumFractionDigits:d==null?1:d}); }
+
+function goTo(level, patch){
+  Object.assign(state, patch||{});
+  state.level = level;
+  render();
+}
+
+function render(){
+  renderBreadcrumb();
+  renderInfo();
+  setVisibility();
+  frameForLevel();
+}
+
+function renderBreadcrumb(){
+  const crumbs = [{label:'Tracker', level:'tracker'}];
+  if(state.level!=='tracker'){
+    crumbs.push({label:stationName(state.station), level:'station'});
+  }
+  if(state.level==='plane'||state.level==='panel'||state.level==='straw'){
+    crumbs.push({label:planeName(state.station,state.planeIdx), level:'plane'});
+  }
+  if(state.level==='panel'||state.level==='straw'){
+    crumbs.push({label:panelName(state.station,state.planeIdx,state.panelNumber), level:'panel'});
+  }
+  if(state.level==='straw'){
+    const pn = panelByKey(state.planeIdx, state.panelNumber);
+    const s = pn.straws.find(s=>s._slot===state.strawSlot);
+    crumbs.push({label:`Straw ${s.globalIndex}`, level:'straw'});
+  }
+  crumbEl.innerHTML = '';
+  crumbs.forEach((c,i)=>{
+    if(i>0){ const sep=document.createElement('span'); sep.className='crumb-sep'; sep.textContent='／'; crumbEl.appendChild(sep); }
+    const b = document.createElement('button');
+    b.className = 'crumb' + (c.level===state.level ? ' current' : '');
+    b.textContent = c.label;
+    b.type = 'button';
+    b.addEventListener('click', ()=>goTo(c.level));
+    crumbEl.appendChild(b);
+  });
+}
+
+function renderInfo(){
+  if(state.level==='tracker'){
+    infoEl.innerHTML = trackerInfoHTML(); wireMinimap();
+    const rb = document.getElementById('reset-dead-btn');
+    if(rb) rb.addEventListener('click', ()=>{ if(confirm('Clear all dead-straw marks across every station?')) resetDead(); });
+    const onb = document.getElementById('open-names-general-btn');
+    if(onb) onb.addEventListener('click', ()=>openNamesEditorFocused(null));
+    return;
+  }
+  if(state.level==='station'){ infoEl.innerHTML = stationInfoHTML(); wireChips('.chip[data-plane]', (el)=>goTo('plane',{planeIdx:+el.dataset.plane})); wireEditNameButtons(); return; }
+  if(state.level==='plane'){ infoEl.innerHTML = planeInfoHTML(); wireChips('.chip[data-panel]', (el)=>goTo('panel',{panelNumber:+el.dataset.panel})); wireEditNameButtons(); return; }
+  if(state.level==='panel'){ infoEl.innerHTML = panelInfoHTML(); wireChips('.chip[data-straw]', (el)=>goTo('straw',{strawSlot:+el.dataset.straw})); wireEditNameButtons(); return; }
+  if(state.level==='straw'){
+    infoEl.innerHTML = strawInfoHTML();
+    const db = document.getElementById('dead-toggle-btn');
+    if(db) db.addEventListener('click', ()=>{
+      setDead(state.station, state.strawSlot, !isDead(state.station, state.strawSlot));
+      render();
+    });
+    wireEditNameButtons();
+    return;
+  }
+}
+function wireChips(sel, fn){ infoEl.querySelectorAll(sel).forEach(el=>el.addEventListener('click',()=>fn(el))); }
+function wireEditNameButtons(){
+  infoEl.querySelectorAll('.editnamebtn[data-edit-id]').forEach(el=>{
+    el.addEventListener('click', ()=>openNamesEditorFocused(el.dataset.editId));
+  });
+}
+function wireMinimap(){
+  infoEl.querySelectorAll('.minimap .seg').forEach(el=>{
+    el.addEventListener('click', ()=>goTo('station',{station:+el.dataset.n}));
+  });
+}
+
+function trackerInfoHTML(){
+  let segs = '';
+  for(let n=0;n<N_STATIONS;n++){
+    const dead = countDeadIn(n);
+    const nameBit = stationHasName(n) ? esc(stationName(n))+' — ' : '';
+    segs += `<div class="seg${n===state.station?' active':''}${dead?' has-dead':''}" data-n="${n}" title="${nameBit}${dead} dead straw${dead===1?'':'s'}"><span>${n}</span></div>`;
+  }
+  const totalDead = countDeadTotal();
+  return `
+    <p class="eyebrow">Mu2e · Full Tracker</p>
+    <h1 class="obj-title">Straw&nbsp;Tracker</h1>
+    <p class="obj-sub">${N_STATIONS} stations along the muon beamline, each holding two measurement planes of straw-tube panels. Click a station below or in the scene to open it.</p>
+    <div class="specgrid">
+      <div class="spec"><span class="k">Stations</span><span class="v">${N_STATIONS}</span></div>
+      <div class="spec"><span class="k">Overall length</span><span class="v">${fmt(TRACKER_LENGTH)} mm</span></div>
+      <div class="spec"><span class="k">Station pitch</span><span class="v">${fmt(STATION_PITCH)} mm</span></div>
+      <div class="spec"><span class="k">Beam direction</span><span class="v">St. 0 → St. ${N_STATIONS-1}</span></div>
+      <div class="spec"><span class="k">Planes / station</span><span class="v">2</span></div>
+      <div class="spec"><span class="k">Panels / station</span><span class="v">6</span></div>
+      <div class="spec"><span class="k">Straws / station</span><span class="v">${fmt(TOTAL_STRAWS,0)}</span></div>
+      <div class="spec"><span class="k">Straws, full tracker</span><span class="v">${fmt(TOTAL_STRAWS*N_STATIONS,0)}</span></div>
+      <div class="spec"><span class="k">Active radius</span><span class="v">40–70 cm</span></div>
+      <div class="spec"><span class="k">Dead straws marked</span><span class="v"${totalDead?' style="color:#e0796b"':''}>${totalDead}</span></div>
+    </div>
+    <p class="section-label">Stations <span style="text-transform:none; color:var(--text-faint);">(slot number shown · hover for name · red ring = has dead straws)</span></p>
+    <div class="minimap">${segs}</div>
+    <button class="editnamebtn" type="button" id="open-names-general-btn">Edit station/plane/panel names…</button>
+    ${totalDead ? `<button class="deadbtn" id="reset-dead-btn" type="button">Clear all dead-straw marks (${totalDead})</button>` : ''}
+    <div class="note">Every station shares the exact geometry measured from your Onshape <b>Station</b> model — a 700&nbsp;mm manifold radius and 800&nbsp;mm support rim, 100&nbsp;mm deep. Station count, overall length and beam direction are published Mu2e tracker conventions; slot numbers are fixed addresses, real names are yours to fill in; "dead" marks are your own annotations — both kept in this browser.</div>
+  `;
+}
+
+function stationInfoHTML(){
+  const dead = countDeadIn(state.station);
+  const n = state.station;
+  const upstreamN = n, downstreamN = N_STATIONS-1-n;
+  return `
+    <p class="eyebrow">Station Slot ${n} of ${N_STATIONS}</p>
+    <h1 class="obj-title">${esc(stationName(n))}</h1>
+    <p class="obj-sub">One tracking station: two planes of straw-tube panels back to back, sealed to the same 700&nbsp;mm manifold ring measured from my CAD model.</p>
+    <div class="specgrid">
+      <div class="spec"><span class="k">Slot</span><span class="v">${n}</span></div>
+      <div class="spec"><span class="k">Position on beamline</span><span class="v">z ≈ ${fmt(stationCenterZ(n))} mm</span></div>
+      <div class="spec"><span class="k">Stations upstream</span><span class="v">${upstreamN}</span></div>
+      <div class="spec"><span class="k">Stations downstream</span><span class="v">${downstreamN}</span></div>
+      <div class="spec"><span class="k">Manifold radius</span><span class="v">700.000 mm</span></div>
+      <div class="spec"><span class="k">Support rim radius</span><span class="v">800.000 mm</span></div>
+      <div class="spec"><span class="k">Depth (station axis)</span><span class="v">100 mm</span></div>
+      <div class="spec"><span class="k">Planes</span><span class="v">2</span></div>
+      <div class="spec"><span class="k">Panels</span><span class="v">6 (3 front + 3 back, ×2)</span></div>
+      <div class="spec"><span class="k">Straws</span><span class="v">${fmt(TOTAL_STRAWS,0)}</span></div>
+      <div class="spec"><span class="k">Dead straws here</span><span class="v"${dead?' style="color:#e0796b"':''}>${dead}</span></div>
+    </div>
+    <button class="editnamebtn" type="button" data-edit-id="name-station-${n}">Edit this station's name…</button>
+    <p class="section-label">Planes in this station</p>
+    <div class="childlist">
+      <div class="chip" data-plane="0">${esc(planeName(n,0))}</div>
+      <div class="chip" data-plane="1">${esc(planeName(n,1))}</div>
+    </div>
+    <div class="note">Radius and depth read directly off the STL: every vertex in the manifold shell sits within 0.0001&nbsp;mm of r&nbsp;=&nbsp;700&nbsp;mm. Full-tracker placement uses the published 3&nbsp;m/18-station spacing; Slot 0 is upstream, Slot ${N_STATIONS-1} downstream. Slot numbers are fixed; names are yours to edit.</div>
+  `;
+}
+
+function planeInfoHTML(){
+  const n = state.station, planeIdx = state.planeIdx;
+  const pl = STATION_DATA[planeIdx];
+  const panelsFront = pl.panels.filter(p=>p.face==='Front');
+  const panelsBack = pl.panels.filter(p=>p.face==='Back');
+  const chip = p => `<div class="chip" data-panel="${p.number}">${esc(panelName(n,planeIdx,p.number))} · ${p.face}</div>`;
+  return `
+    <p class="eyebrow">${esc(stationName(n))} · ${esc(planeName(n,planeIdx))}</p>
+    <h1 class="obj-title">${esc(planeName(n,planeIdx))}</h1>
+    <p class="obj-sub">Two staggered layers of three panels — a front face and a back face rotated 30° — giving six straw orientations for stereo position measurement.</p>
+    <div class="specgrid">
+      <div class="spec"><span class="k">Slot</span><span class="v">Plane ${planeIdx+1}</span></div>
+      <div class="spec"><span class="k">Front-face panels</span><span class="v">3, at 120° pitch</span></div>
+      <div class="spec"><span class="k">Back-face panels</span><span class="v">3, rotated +30°</span></div>
+      <div class="spec"><span class="k">Straws in this plane</span><span class="v">${fmt(pl.panels.length*96,0)}</span></div>
+      <div class="spec"><span class="k">Position resolution</span><span class="v">≈ 200 µm / station</span></div>
+    </div>
+    <button class="editnamebtn" type="button" data-edit-id="name-plane-${n}-${planeIdx}">Edit this plane's name…</button>
+    <p class="section-label">Front face</p>
+    <div class="childlist">${panelsFront.map(chip).join('')}</div>
+    <p class="section-label">Back face</p>
+    <div class="childlist">${panelsBack.map(chip).join('')}</div>
+    <div class="note">Panel gap centers and the 30° stagger between faces were measured from the real manifold plate boundaries in the STL, not assumed.</div>
+  `;
+}
+
+function panelInfoHTML(){
+  const n = state.station, planeIdx = state.planeIdx;
+  const pn = panelByKey(planeIdx, state.panelNumber);
+  const layer1 = pn.straws.filter(s=>s.layer===1);
+  const layer2 = pn.straws.filter(s=>s.layer===2);
+  const deadHere = countDeadIn(n, sl=>pn.straws.some(s=>s._slot===sl));
+  const chip = s => `<div class="chip${isDead(n,s._slot)?' dead':''}" data-straw="${s._slot}">#${s.globalIndex}</div>`;
+  return `
+    <p class="eyebrow">${esc(stationName(n))} · ${esc(planeName(n,planeIdx))} · ${pn.face} face</p>
+    <h1 class="obj-title">${esc(panelName(n,planeIdx,pn.number))}</h1>
+    <p class="obj-sub">A real solid plate — a ${PANEL_OUTER_HALF*2}° outer edge bolted to the support rim in ${PANEL_RIM_SEGMENTS} pieces, and a ${PANEL_INNER_HALF*2}° inner edge (same span, both real arcs) where 96 straws in two interleaved layers of 48 mount. The straws aren't uniform pins: each is a long tangential tube sized to the chord of the inner edge at its own row, so they graduate from short near the panel's corners to long near its center — confirmed from a real single-panel STL export.</p>
+    <div class="specgrid">
+      <div class="spec"><span class="k">Slot</span><span class="v">Panel ${pn.number} · ${pn.face}</span></div>
+      <div class="spec"><span class="k">Angular center</span><span class="v">${fmt(((pn.centerDeg%360)+360)%360)}°</span></div>
+      <div class="spec"><span class="k">Outer edge span</span><span class="v">${PANEL_OUTER_HALF*2}°</span></div>
+      <div class="spec"><span class="k">Inner (straw) edge span</span><span class="v">${PANEL_INNER_HALF*2}°</span></div>
+      <div class="spec"><span class="k">Straw length range</span><span class="v">${STRAW_LEN_MIN}–${STRAW_LEN_MAX} mm</span></div>
+      <div class="spec"><span class="k">Layers</span><span class="v">2 × 48 straws</span></div>
+      <div class="spec"><span class="k">Channel numbering</span><span class="v">0–95, even top / odd bottom</span></div>
+      <div class="spec"><span class="k">Straw pitch (row)</span><span class="v">≈ 6.25 mm</span></div>
+      <div class="spec"><span class="k">Band depth used</span><span class="v">25 mm</span></div>
+      <div class="spec"><span class="k">Dead in this panel</span><span class="v"${deadHere?' style="color:#e0796b"':''}>${deadHere} of 96</span></div>
+    </div>
+    <button class="editnamebtn" type="button" data-edit-id="name-panel-${n}-${planeIdx}-${pn.number}">Edit this panel's name…</button>
+    <p class="section-label">Top row · even channels (tap any to inspect · red = marked dead)</p>
+    <div class="childlist">${layer2.map(chip).join('')}</div>
+    <p class="section-label">Bottom row · odd channels</p>
+    <div class="childlist">${layer1.map(chip).join('')}</div>
+    <div class="note">Channels run left→right, 0–95, alternating rows: even numbers on the top row, odd on the bottom — same convention as the physical channel map. Use <b>Jump to…</b> at the top to reach any straw directly by number, or click a straw pin in the scene.</div>
+  `;
+}
+
+function strawInfoHTML(){
+  const pn = panelByKey(state.planeIdx, state.panelNumber);
+  const s = pn.straws.find(s=>s._slot===state.strawSlot);
+  const g = strawGeometry(s);
+  const dead = isDead(state.station, s._slot);
+  return `
+    <p class="eyebrow">${esc(stationName(state.station))} · ${esc(planeName(state.station,state.planeIdx))} · ${esc(panelName(state.station,state.planeIdx,pn.number))}</p>
+    <h1 class="obj-title">Straw&nbsp;${s.globalIndex}</h1>
+    <p class="obj-sub">${s.isTop ? 'Top' : 'Bottom'} row (layer ${s.layer} of 2), position ${s.indexInLayer} of 48 left→right — channel ${s.globalIndex} is ${s.globalIndex%2===0?'even':'odd'}. A single tangential tube spanning its own row's chord of the 700mm manifold circle, not a short radial pin.</p>
+    <div class="specgrid">
+      <div class="spec"><span class="k">Status</span><span class="v" style="color:${dead?'#e0796b':'#7fd9a0'}">${dead ? 'DEAD — excluded' : 'Live'}</span></div>
+      <div class="spec"><span class="k">Center (x, y, z)</span><span class="v">${fmt(g.center.x)}, ${fmt(g.center.y)}, ${fmt(s.zLocal)} mm</span></div>
+      <div class="spec"><span class="k">Panel azimuth</span><span class="v">${fmt(((s.angleDeg%360)+360)%360)}°</span></div>
+      <div class="spec"><span class="k">Row offset from tracker axis</span><span class="v">${fmt(s.rowOffset,1)} mm</span></div>
+      <div class="spec"><span class="k">Half-span at manifold edge</span><span class="v">±${fmt(s.halfAngleDeg,2)}°</span></div>
+      <div class="spec"><span class="k">Outer diameter</span><span class="v">5.0 mm</span></div>
+      <div class="spec"><span class="k">Wall</span><span class="v">2 × 6 µm Mylar®, ~15 µm total</span></div>
+      <div class="spec"><span class="k">Sense wire</span><span class="v">25 µm Au-plated W</span></div>
+      <div class="spec"><span class="k">Active length (this straw)</span><span class="v">${fmt(s.strawLen,1)} mm</span></div>
+    </div>
+    <button class="deadbtn${dead?' is-dead':''}" id="dead-toggle-btn" type="button">${dead ? 'Restore this straw' : 'Mark this straw dead'}</button>
+    <div class="note">Center position and length are computed from the real chord geometry measured off a single-panel STL (Panel_1.stl): each straw's length is set by how far its row sits from the tracker axis, calibrated to the published 334–1174mm active-length range. Wire and wall figures are published Mu2e straw specifications. Dead/live status is your own annotation, saved in this browser per station.</div>
+  `;
+}
+
+/* =====================================================================
+   PICKING
+   ===================================================================== */
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function pointerToMouse(e){
+  const r = dom.getBoundingClientRect();
+  mouse.x = ((e.clientX-r.left)/r.width)*2-1;
+  mouse.y = -((e.clientY-r.top)/r.height)*2+1;
+}
+
+function handleHover(e){
+  pointerToMouse(e);
+  dom.style.cursor = 'grab';
+  raycaster.setFromCamera(mouse, camera);
+  let targets = [];
+  if(state.level==='tracker') targets = stationProxies;
+  else if(state.level==='station') targets = panelMeshes;
+  else if(state.level==='plane') targets = panelMeshes.filter(m=>m.userData.planeIdx===state.planeIdx);
+  else if(state.level==='panel') targets = [strawMesh];
+  const hits = raycaster.intersectObjects(targets);
+  if(hits.length){ dom.style.cursor = 'pointer'; }
+}
+
+dom.addEventListener('click', (e)=>{
+  // ignore clicks that were actually drags
+  if(Math.abs(e.clientX-clickDownX)>4 || Math.abs(e.clientY-clickDownY)>4) return;
+  pointerToMouse(e);
+  raycaster.setFromCamera(mouse, camera);
+
+  if(state.level==='tracker'){
+    const hits = raycaster.intersectObjects(stationProxies);
+    if(hits.length) goTo('station', {station:hits[0].object.userData.n});
+    return;
+  }
+  if(state.level==='station'){
+    const hits = raycaster.intersectObjects(panelMeshes);
+    if(hits.length) goTo('plane', {planeIdx:hits[0].object.userData.planeIdx});
+    return;
+  }
+  if(state.level==='plane'){
+    const hits = raycaster.intersectObjects(panelMeshes.filter(m=>m.userData.planeIdx===state.planeIdx));
+    if(hits.length) goTo('panel', {panelNumber:hits[0].object.userData.panelNumber});
+    return;
+  }
+  if(state.level==='panel'){
+    const hits = raycaster.intersectObject(strawMesh);
+    if(hits.length && hits[0].instanceId!=null){
+      const pn = panelByKey(state.planeIdx, state.panelNumber);
+      const hit = pn.straws.find(s=>s._slot===hits[0].instanceId);
+      if(hit) goTo('straw', {strawSlot:hit._slot});
+    }
+    return;
+  }
+});
+let clickDownX=0, clickDownY=0;
+dom.addEventListener('pointerdown', e=>{ clickDownX=e.clientX; clickDownY=e.clientY; });
+
+/* =====================================================================
+   JUMP PANEL
+   ===================================================================== */
+const jumpBtn = document.getElementById('jump-btn');
+const jumpBox = document.getElementById('jumpbox');
+const selStation = document.getElementById('sel-station');
+const selPlane = document.getElementById('sel-plane');
+const selPanel = document.getElementById('sel-panel');
+const selStraw = document.getElementById('sel-straw');
+
+// Station/plane/panel option text shows the real name (falling back to
+// the slot label) — since names are per-station, the plane and panel
+// lists have to be rebuilt whenever the station selection changes, not
+// just built once like the old slot-only numbering allowed.
+function refreshStationOptions(){
+  const prev = selStation.value;
+  selStation.innerHTML = '';
+  for(let n=0;n<N_STATIONS;n++){
+    const o=document.createElement('option'); o.value=n;
+    o.textContent = stationHasName(n) ? `${stationName(n)} · Slot ${n}` : stationName(n);
+    selStation.appendChild(o);
+  }
+  if(prev!=='' && +prev<N_STATIONS) selStation.value = prev;
+}
+function refreshPlaneOptions(){
+  const prev = selPlane.value;
+  selPlane.innerHTML = '';
+  const n = +selStation.value;
+  [0,1].forEach(i=>{
+    const o=document.createElement('option'); o.value=i;
+    o.textContent = planeHasName(n,i) ? `${planeName(n,i)} · Plane ${i+1}` : planeName(n,i);
+    selPlane.appendChild(o);
+  });
+  if(prev!==''){ selPlane.value = prev; }
+  refreshPanelOptions();
+}
+function refreshPanelOptions(){
+  selPanel.innerHTML='';
+  const n = +selStation.value;
+  const pl = STATION_DATA[+selPlane.value];
+  pl.panels.forEach(p=>{
+    const o=document.createElement('option'); o.value=p.number;
+    const nm = panelName(n,+selPlane.value,p.number);
+    o.textContent = panelHasName(n,+selPlane.value,p.number) ? `${nm} · Panel ${p.number} · ${p.face}` : `${nm} · ${p.face}`;
+    selPanel.appendChild(o);
+  });
+  refreshStrawOptions();
+}
+function refreshStrawOptions(){
+  selStraw.innerHTML='';
+  const pn = panelByKey(+selPlane.value, +selPanel.value);
+  const sorted = pn.straws.slice().sort((a,b)=>a.globalIndex-b.globalIndex);
+  sorted.forEach(s=>{ const o=document.createElement('option'); o.value=s._slot; o.textContent=`Straw ${s.globalIndex} (${s.isTop?'top':'bottom'})`; selStraw.appendChild(o); });
+}
+function refreshJumpOptions(){ refreshStationOptions(); refreshPlaneOptions(); }
+selStation.addEventListener('change', refreshPlaneOptions);
+selPlane.addEventListener('change', refreshPanelOptions);
+selPanel.addEventListener('change', refreshStrawOptions);
+refreshStationOptions();
+refreshPlaneOptions();
+
+jumpBtn.addEventListener('click', ()=>{ jumpBox.classList.toggle('open'); });
+document.addEventListener('click', (e)=>{
+  if(!jumpBox.contains(e.target) && e.target!==jumpBtn){ jumpBox.classList.remove('open'); }
+});
+document.getElementById('jump-go').addEventListener('click', ()=>{
+  goTo('straw', {
+    station: +selStation.value,
+    planeIdx: +selPlane.value,
+    panelNumber: +selPanel.value,
+    strawSlot: +selStraw.value
+  });
+  jumpBox.classList.remove('open');
+});
+
+/* =====================================================================
+   NAMES MODAL (Edit station / plane / panel names)
+   ===================================================================== */
+const namesOverlay = document.getElementById('namesOverlay');
+const namesModal = document.getElementById('namesModal');
+document.getElementById('names-max-slot').textContent = N_STATIONS-1;
+
+function buildNamesModalContent(){
+  const stationsList = document.getElementById('stations-list');
+  stationsList.innerHTML = '';
+  for(let n=0;n<N_STATIONS;n++){
+    const row = document.createElement('div');
+    row.className = 'namesRow';
+    row.innerHTML = `
+      <label for="name-station-${n}">Slot ${n}</label>
+      <input type="text" id="name-station-${n}" data-kind="station" data-n="${n}"
+        value="${esc(customNames.stations[n]||'')}" placeholder="Station Slot ${n}">
+    `;
+    stationsList.appendChild(row);
+  }
+
+  const accWrap = document.getElementById('station-accordions');
+  accWrap.innerHTML = '';
+  for(let n=0;n<N_STATIONS;n++){
+    const item = document.createElement('div');
+    item.className = 'accItem';
+    const planesHTML = [0,1].map(planeIdx=>{
+      const pl = STATION_DATA[planeIdx];
+      const panelsHTML = pl.panels.map(p=>`
+        <div class="namesRow">
+          <label for="name-panel-${n}-${planeIdx}-${p.number}">Panel ${p.number} (${p.face})</label>
+          <input type="text" id="name-panel-${n}-${planeIdx}-${p.number}" data-kind="panel"
+            data-n="${n}" data-plane="${planeIdx}" data-panel="${p.number}"
+            value="${esc(customNames.panels[panelKey(n,planeIdx,p.number)]||'')}" placeholder="Panel ${p.number}">
+        </div>
+      `).join('');
+      return `
+        <div class="namesRow">
+          <label for="name-plane-${n}-${planeIdx}">Plane ${planeIdx+1}</label>
+          <input type="text" id="name-plane-${n}-${planeIdx}" data-kind="plane"
+            data-n="${n}" data-plane="${planeIdx}"
+            value="${esc(customNames.planes[planeKey(n,planeIdx)]||'')}" placeholder="Plane ${planeIdx+1}">
+        </div>
+        <div class="namesPanelsGrid">${panelsHTML}</div>
+      `;
+    }).join('');
+    item.innerHTML = `
+      <button type="button" class="accHead" data-acc="${n}">
+        <span class="accSlot">Slot ${n}</span>
+        <span class="accName">${esc(stationName(n))}</span>
+        <span class="accChevron">&#9662;</span>
+      </button>
+      <div class="accBody" hidden>${planesHTML}</div>
+    `;
+    accWrap.appendChild(item);
+  }
+}
+
+function openNamesEditorFocused(id){
+  buildNamesModalContent();
+  namesOverlay.classList.add('open');
+  if(id){
+    const parts = id.split('-'); // name-station-3 / name-plane-3-1 / name-panel-3-1-4
+    const kind = parts[1];
+    if(kind!=='station'){
+      const n = +parts[2];
+      const head = document.querySelector(`.accHead[data-acc="${n}"]`);
+      if(head){ head.classList.add('open'); head.nextElementSibling.hidden = false; }
+    }
+    requestAnimationFrame(()=>{
+      const el = document.getElementById(id);
+      if(el){ el.scrollIntoView({block:'center'}); el.focus(); if(el.select) el.select(); }
+    });
+  }
+}
+
+document.getElementById('names-btn').addEventListener('click', ()=>openNamesEditorFocused(null));
+document.getElementById('names-close').addEventListener('click', ()=>namesOverlay.classList.remove('open'));
+namesOverlay.addEventListener('click', (e)=>{ if(e.target===namesOverlay) namesOverlay.classList.remove('open'); });
+
+namesModal.addEventListener('input', (e)=>{
+  const t = e.target;
+  const kind = t.dataset.kind;
+  if(!kind) return;
+  if(kind==='station'){
+    const n = +t.dataset.n;
+    setStationName(n, t.value);
+    const accName = document.querySelector(`.accHead[data-acc="${n}"] .accName`);
+    if(accName) accName.textContent = stationName(n);
+  } else if(kind==='plane'){
+    setPlaneName(+t.dataset.n, +t.dataset.plane, t.value);
+  } else if(kind==='panel'){
+    setPanelName(+t.dataset.n, +t.dataset.plane, +t.dataset.panel, t.value);
+  }
+  refreshStationLabels();
+  refreshJumpOptions();
+  render();
+});
+
+namesModal.addEventListener('click', (e)=>{
+  const head = e.target.closest('.accHead');
+  if(!head) return;
+  const body = head.nextElementSibling;
+  const willOpen = body.hidden;
+  body.hidden = !willOpen;
+  head.classList.toggle('open', willOpen);
+});
+
+document.getElementById('stations-bulk-toggle').addEventListener('click', ()=>{
+  const box = document.getElementById('stations-bulk-box');
+  box.hidden = !box.hidden;
+});
+document.getElementById('stations-bulk-fill').addEventListener('click', ()=>{
+  const lines = document.getElementById('stations-bulk-text').value.split('\n');
+  for(let n=0;n<N_STATIONS && n<lines.length;n++){
+    setStationName(n, lines[n].trim());
+  }
+  buildNamesModalContent();
+  refreshStationLabels();
+  refreshJumpOptions();
+  render();
+});
+
+/* =====================================================================
+   RESIZE + RENDER LOOP
+   ===================================================================== */
+window.addEventListener('resize', ()=>{
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+let lastT = performance.now();
+function loop(now){
+  const dt = Math.min(0.05,(now-lastT)/1000); lastT = now;
+  tickCamera(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+
+document.getElementById('loading').style.display='none';
+goTo('tracker');
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
