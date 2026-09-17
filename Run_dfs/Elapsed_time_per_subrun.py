@@ -50,11 +50,11 @@ def main():
     if args.csv:
         per_srn.to_csv(args.csv, index=False)
         print(f"Wrote per-subrun table to {args.csv}")
-    ns_to_min = (10E-6)*60
+    ns_to_min = (10E-6)/2
     plt.figure(figsize=(10, 6))
     plt.scatter(per_srn["srn"], per_srn["duration"]*ns_to_min, marker=".", linestyle="-", linewidth=0.8)
     plt.xlabel("Subrun number")
-    plt.ylabel("Subrun duration [min]")
+    plt.ylabel("Subrun duration [sec]")
     plt.grid()
     plt.title("Duration of each subrun")
     plt.tight_layout()
