@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
+"""
+subrun_duration.py
 
+Estimates each subrun's duration from the span of event numbers (evn) it
+covers, assuming a fixed per-event readout time -- an alternative to the
+straw-hit-time-based version, for files/branches where sh.time isn't
+what you want to key off of.
+"""
 
 import argparse
 
@@ -27,33 +34,33 @@ def main():
     n = df.Count().GetValue()
     print(f"Loaded '{args.tree}' from {args.rootfile}: {n:,} entries")
 
- 
-    df = df.Define(
-        "evt_time",
-        "sh.time.empty() ? std::numeric_limits<float>::quiet_NaN() : Min(sh.time)"
-    )
+    # evn is a per-event scalar (global monotonically increasing event
+    # counter) -- no Min()/.empty() needed, unlike array-valued branches.
+    df = df.Define("evt_time", "evn")
 
     data = df.AsNumpy(["srn", "evt_time"])
     pdf = pd.DataFrame(data)
     pdf = pdf.dropna(subset=["evt_time"])
 
- 
     per_srn = pdf.groupby("srn")["evt_time"].agg(["min", "max", "count"])
-    per_srn["duration"] = per_srn["max"] - per_srn["min"]
+    per_srn["duration"] = per_srn["max"] - per_srn["min"]   # event-number span
     per_srn = per_srn.reset_index()
 
     print(f"Subruns found: {len(per_srn)}")
     print(f"Duration range: {per_srn['duration'].min():.1f} to "
-          f"{per_srn['duration'].max():.1f} (units match sh.time, likely ns)")
+          f"{per_srn['duration'].max():.1f} events")
     print(per_srn.head(10).to_string(index=False))
 
     if args.csv:
         per_srn.to_csv(args.csv, index=False)
         print(f"Wrote per-subrun table to {args.csv}")
-    ns_to_min = (10E-6)/2
+
+    sec_per_event = 100e-6   # 100 us/event -- confirm this is your actual DAQ readout period
     plt.figure(figsize=(10, 6))
-    plt.scatter(per_srn["srn"], per_srn["duration"]*ns_to_min, marker=".", linestyle="-", linewidth=0.8)
+    plt.scatter(per_srn["srn"], per_srn["duration"] * sec_per_event, marker=".")
     plt.xlabel("Subrun number")
+    plt.xlim(0,451)
+    plt.ylim(49.98,50)
     plt.ylabel("Subrun duration [sec]")
     plt.grid()
     plt.title("Duration of each subrun")
