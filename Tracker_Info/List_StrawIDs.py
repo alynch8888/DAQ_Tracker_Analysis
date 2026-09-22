@@ -1,6 +1,5 @@
 from tracker_info import Tracker
 import math
-##Need to edit this one. I asked Claude to reverse my StrawID_to_PPS_Convert.py but I don't care for the way it is done.
 d16 = "0000000000000000"
 
 
@@ -30,6 +29,6 @@ for slot in range(len(Tracker)):
             strawid_bits_max = Plane_bits + Panel_bits + straw_bin_max
             strawid_0d_min = int(strawid_bits_min,2)
             strawid_0d_max = int(strawid_bits_max,2)
-            print("             StrawID", strawid_0d_min)#, f"({strawid_bits_min})")
-            print("             StrawID", strawid_0d_max)#, f"({strawid_bits_max})")
+            print("             Min SID", strawid_0d_min)#, f"({strawid_bits_min})")
+            print("             Max SID", strawid_0d_max)#, f"({strawid_bits_max})")
         print("-"*50)
